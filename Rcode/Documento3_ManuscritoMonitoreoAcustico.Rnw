@@ -1,0 +1,934 @@
+\documentclass[spanish,12pt]{article}
+\usepackage[utf8]{inputenc} 
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{csquotes}
+\usepackage{lscape}
+
+\usepackage[shiftmargins]{vmargin}
+\setpapersize{USletter}
+%%\setmarginsrb{left}{top}{right}{bottom}{headhgt}{headsep}{foothgt}{footskip}
+\setmarginsrb{3.2cm}{2cm}{1.8cm}{2cm}{0.5cm}{0.5cm}{0.5cm}{0.5cm}
+
+\usepackage[Glenn]{fncychap}
+\usepackage{longtable}
+%% cambiamos a biblatex
+%%\usepackage[backend=bibtex,natbib=true,style=authoryear]{biblatex}
+%\addbibresource{/home/jferrer/CEBA/lib/BibTEX/JBM.bib}
+
+\usepackage[authoryear,sort]{natbib}
+
+\usepackage[pagebackref=false,colorlinks=true,citecolor=black,linkcolor=black,filecolor=black,urlcolor=black]{hyperref}
+
+\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+\usepackage{titling}
+
+\pretitle{\begin{center} 
+\large \colorbox{black}{\textcolor{white}{Laboratorio de Ecología Espacial}} \par \HRule \\[0.4cm] \LARGE }
+\posttitle{\par \HRule \\[1.5cm]
+\end{center}\vskip 0.5em}
+
+\preauthor{\large\begin{center}}
+\postauthor{\\
+Laboratorio de Ecología Espacial, Centro de Estudios Botánicos y Agroforestales\\Instituto Venezolano de Investigaciones Científicas
+\end{center}
+\par}
+
+\predate{\begin{center}\normalsize Borrador\\\Sexpr{cdg.doc}\\}
+\date{Versión de \today}
+\postdate{\par\end{center}}
+
+
+\title{Ensayo de métodos de monitorización acústica en el Jardín Botánico de Maracaibo, municipio San Francisco, estado Zulia}
+\author{JR Ferrer-Paris}
+
+\begin{document}
+
+\maketitle
+
+\bibliographystyle{/home/jferrer/NeoMapas/lib/custom-bib/tesis}
+
+
+\section*{A quien pueda interesar}
+
+<<echo=false, eval=true, results=hide>>=
+require(chron)
+require(raster)
+require(RColorBrewer)
+require(plotrix)
+require(xtable)
+require(AICcmodavg)
+require(unmarked)
+require(gdata)
+require(gstat)
+
+paquetes <- (.packages())
+paquetes <- paquetes[!(paquetes %in% c("stats", "graphics", "grDevices", "utils", "datasets", "methods", "base", "deldir", "DBI", "RMySQL"))]
+
+luq <- function(x,contar.NA=FALSE) {
+	if (contar.NA==F) {
+	x <- x[!is.na(x)]
+	}
+ length(unique(x))
+ }
+
+@
+
+\textbf{Documento para uso exlusivo del personal científico y estudiantes del Laboratorio de Ecología Espacial, no difundir sin autorización expresa del autor.} Se presenta un análisis estadístico basado en un muestreo de campo realizado entre el 9 y 10 de octubre de 2014 con la participación de Leinny González, Cecilia Lozano, Junior Larreal, Liset Zambrano, Thayma Vargas, Arlene Cardozo, José Soto, Ada Y. Sánchez Mercado y J.R. Ferrer Paris. Este documento es generado utilizando las funciones de \texttt{Sweave} desde una sesión de \emph{R} \citep{pqt::base}, por tanto todas las tablas y figuras se generan y actualizan automáticamente a partir de los datos suministrados. Para acceso al código fuente en \emph{R} y los archivos de datos contacte al autor. Dentro de \emph{R} utilizamos los paquetes 
+<<citas paquetes, results=tex, echo=false, eval=true>>=
+cat(paste("\\emph{",paquetes,"} \\citep{pqt::",paquetes,"}",sep="",collapse="; "))
+@
+. 
+
+\section{Puntos de muestreo}
+
+Los datos de las planillas están en un archivo en \emph{Google Drive}, los bajamos en formato \texttt{csv} y los leemos en una sesión de \emph{R}.
+
+<<LeerDatos>>=
+Puntos <- read.csv("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/20150109_MA_Puntos.csv")
+Muestreo <- read.csv("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/20150109_MA_Muestreo.csv")
+Grabaciones <- read.csv("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/20150109_MA_Grabaciones.csv")
+
+Puntos$y <- ifelse(is.na(Puntos$Latitud.nueva),Puntos$Latitude,Puntos$Latitud.nueva)
+Puntos$x <- ifelse(is.na(Puntos$Longitud.nueva),Puntos$Longitude,Puntos$Longitud.nueva)
+
+
+dts <- merge(Grabaciones,Muestreo,
+             by.x=c("Fecha.muestreo","Punto","Micrófono"),
+             by.y=c("Fecha","Punto","Micrófono"))
+
+dts$Archivo <- with(dts,sprintf("%s_%s_%s",Punto,Fecha.muestreo,sub(":","",Hinicio)))
+
+@ 
+
+Vamos a empezar con la lista de puntos caracterizados. Debemos calcular la incertidumbre de la georeferencia, que en este caso es la suma de la distancia al punto (\texttt{DAP}), el error de posicionamiento o error de GPS (\texttt{Error.GPS}) y la extensión del punto del muestreo  (\texttt{Extent}) que equivale a la distancia máxima de las fuentes de sonido que pueden ser detectadas con el micrófono, según Arlene esta es de aproximadamente 10 m. La incertidumbre (\texttt{Incertidumbre}) está expresada en metros.
+
+<<Incertidumbre>>=
+Puntos$DAP <- ifelse(is.na(Puntos$Longitud.nueva),
+                     as.numeric(sub(",",".",
+                                    as.character(Puntos$Distancia.al.punto))),
+                     0)
+Puntos$DAP <- ifelse(is.na(Puntos$DAP),mean(Puntos$DAP,na.rm=T),Puntos$DAP)
+Puntos$Error.GPS <- Puntos$EPE 
+Puntos$Error.GPS <- ifelse(is.na(Puntos$Error.GPS),mean(Puntos$Error.GPS,na.rm=T),Puntos$Error.GPS)
+Puntos$Extent <- 10
+Puntos$Incertidumbre <- Puntos$DAP + Puntos$Error.GPS + Puntos$Extent
+
+@ 
+
+Para visualizar estos puntos en un mapa debemos definir sus atributos espaciales. Las funciones \texttt{coordinates} y \texttt{proj4string} del paquete \emph{sp} permiten definir las coordenadas y proyección geográfica de los datos. Añadimos un mapa de la zonificación del jardín para observar su ubicación relativa en la zona oeste del JBM:
+
+<<objetoEspacial,fig=false,echo=false>>=
+coordinates(Puntos) <- c("x","y")
+proj4string(Puntos) <- "+proj=longlat +datum=WGS84"
+plot(Puntos)
+@ 
+
+\setkeys{Gin}{width=.8\textwidth}
+<<mapaJardinTodo,fig=true,width=8,height=6>>=
+JBM.ll <- shapefile("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/ZonificacionJardin.shp")
+plot(JBM.ll)
+text(JBM.ll,"nombre",cex=.75)
+points(Puntos,col=2)
+
+
+
+## calcular el area de estudio
+##rAE <- rasterize(JBM.ll[JBM.ll@data$id %in% c(7,8,11),],r0)
+##sum(values(rAE*area(rAE)),na.rm=T)
+
+
+@ 
+
+<<mapaJardinMuestreo,fig=false,echo=false>>=
+plot(JBM.ll[JBM.ll@data$id %in% c(7,8,11),])
+text(JBM.ll,"nombre",cex=.75)
+points(Puntos,col=2)
+@ 
+
+Para visualizar la incertidumbre (expresada en metros), vamos primero a proyectar los datos a UTM (función \texttt{spTransform}), hacer el gráfico con la función \texttt{plot}, y añadir circulos proporcionales a la incertidumbre con la función \texttt{draw.arc} del paquete \emph{plotrix}. Los circulos oscuros fueron puntos caracterizados durante la actividad de campo, y los grises fueron los puntos que no pudimos caracterizar (columna \texttt{Anotador} con valor ``No muestreado''). 
+
+<<echo=false,eval=false>>=
+##vz0 <- shapefile("~/vectorial/GADM/VEN_adm0.shp")
+vz0 <- shapefile("~/vectorial/ecoSIG/division_pol.shp")
+
+##jpeg(filename = "~/Escritorio/Figura1_AnfibiosJBM.jpeg",
+##     width = 700, height = 500, units = "px", pointsize = 12,
+##     quality = 90)
+
+##pdf(file = "~/Escritorio/Figura1_AnfibiosJBM.pdf",
+##    width="7", height="5")
+##layout(matrix(c(1,2,2,2,
+##                3,2,2,2),ncol=4,byrow=T))
+##wai <- colMeans(sp::coordinates(JBM.ll))
+##plot(vz0)
+##points(wai[1],wai[2],pch=8,col=2,cex=2)
+JBM.ll@data$id[9:10] <- c(6,10)
+
+plot(JBM.ll)
+points(Puntos,col="grey47",cex=.8)
+text(JBM.ll,"id",cex=1.05)
+##dev.off()
+@ 
+
+\setkeys{Gin}{width=.6\textwidth}
+<<objetoEspacialProyectado,fig=true,echo=false>>=
+pts <- spTransform(Puntos,CRS("+proj=utm +zone=19n +datum=WGS84"))
+colnames(pts@coords) <- c("x","y")
+
+JBM.xy <- spTransform(JBM.ll,CRS("+proj=utm +zone=19n +datum=WGS84"))
+
+
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,pch=3)
+draw.arc(x=pts@coords[,1],
+         y=pts@coords[,2],
+         radius=pts@data$Incertidumbre,
+         deg1=0,deg2=360,lty=2,
+         col=c("grey77",1)[1+(pts@data$Anotador != "No muestreado")])
+
+@ 
+
+\section{Caracterización de los puntos}
+
+Para visualizar las variables caracterizadas usamos las opciones de la función \texttt{points} para modificar el tamaño y color de los puntos según la variable de interés. Posteriormente se pueden simplificar las categorías para hacer más sencillo el análisis.
+
+En el caso de la cobertura hay cuatro niveles de la variable. En la columna de sustrato hay un punto caracterizado como ``4*''. En hojarasca la escala empieza con cero. Para Distribución.horizontal hay cuatro categorías.
+Altura.estrato.superior
+En Cuerpo.de.Agua solo hay dos categorías.
+
+\setkeys{Gin}{width=\textwidth}
+
+<<Cobertura,fig=true,echo=false,width=8,height=8>>=
+layout(matrix(1:6,ncol=2))
+par(mar=c(0,0,0,0))
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=pts@data$Cobertura,cex=pts@data$Cobertura/2,pch=19)
+legend("bottomright",legend=1:4,col=1:4,pch=19,pt.cex=c(1:4)/2,title="Cobertura",horiz=T)
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=pts@data$Sustrato,cex=as.numeric(pts@data$Sustrato)/2,pch=19)
+legend("bottomright",legend=levels(pts@data$Sustrato),col=1:6,pch=19,pt.cex=c(1:6)/2,title="Sustrato",horiz=T)
+
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=1+pts@data$Hojarasca,cex=(1+pts@data$Hojarasca)/2,pch=19)
+legend("bottomright",legend=0:3,col=1:4,pch=19,pt.cex=c(1:4)/2,title="Hojarasca",horiz=T)
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=pts@data$Distribución.horizontal,cex=(pts@data$Distribución.horizontal)/2,pch=19)
+legend("bottomright",legend=1:4,col=1:4,pch=19,pt.cex=c(1:4)/2,title="Distribución.horizontal",horiz=T)
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=pts@data$Altura.estrato.superior,cex=(pts@data$Altura.estrato.superior)/2,pch=19)
+legend("bottomright",legend=1:4,col=1:4,pch=19,pt.cex=c(1:4)/2,title="Altura.estrato.superior",horiz=T)
+
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),])
+points(pts,col=1+pts@data$Cuerpo.de.Agua,cex=(1+pts@data$Cuerpo.de.Agua)/2,pch=19)
+legend("bottomright",legend=c("0","1"),col=1:2,pch=19,pt.cex=c(1:2)/2,title="Cuerpo.de.Agua",horiz=T)
+@
+
+\section{Predicción espacial}
+
+A partir de los puntos caracterizados realizamos una predicción espacial para todo el área de estudio. Primero generamos una capa espacial alrededor de los puntos muestreados:
+\setkeys{Gin}{width=.6\textwidth}
+
+<<areaEstudio,fig=true>>=
+rnull <- raster(extent(JBM.xy[JBM.xy@data$id %in% c(7,8,11),]),
+                nrows=18, ncols=24)
+mask <- distanceFromPoints(rnull,pts)<50
+
+##coordinates(mask)[values(mask)==1,]
+
+JBM.grd <- SpatialPixelsDataFrame(points=xyFromCell(mask,1:ncell(mask))[values(mask)==1,],
+                                  data=data.frame(values(mask)[values(mask)==1]),
+                                  proj4string=JBM.xy@proj4string)
+
+image(JBM.grd)
+points(pts)
+@
+
+Para la predicción espacial vamos a utilizar el método de ``krigging'' de una variable indicadora. Vamos a usar las funciones en el paquete \emph{gstat}. 
+
+Vamos a simplificar nuestras variables para considerar solamente dos categorías. Por ejemplo en la Cobertura, vamos a considerar valores menores a 4 (cobertura mayor a 10\%). Aplicamos la función \texttt{variogram} para observar la dependencia espacial de los datos en forma de un semi-variograma. Usamos un filtro (\texttt{ss}) para excluir las observaciones sin valores.
+
+<<variograma,fig=true>>=
+ss <- !is.na(pts@data$Cobertura)
+v = variogram(I(Cobertura < 4)~1,pts[ss,])
+vm = fit.variogram(v, vgm(1, "Exp", 70, .1))
+plot(v,vm)
+
+@ 
+
+Observamos que la semi-varianza es baja cuando la distancia es menor a 20 metros, y luego se mantiene alrededor de $0.15$ y $0.25$. Para hacer la predicción espacial necesitamos definir la estructura espacial en terminos de un modelo. Aplicamos las funciones \texttt{fit.variogram} y \texttt{vgm} para ajustar el modelo a partir de unos parámetros iniciales. En este caso utilizamos un modelo exponencial.
+
+
+Ahora podemos utilizar la función \texttt{krige} para la interpolación espacial basada en ``krigging'' de una variable indicadora según el modelo de variograma estimado anteriormente.
+
+<<indicatorKrigging,fig=true>>=
+ik.Cb = krige(I(Cobertura < 4)~1, pts[ss,], JBM.grd, vm)
+colores <- colorRampPalette(brewer.pal(9,"BuGn"))
+print(spplot(ik.Cb[1],col.regions=colores(30)))
+@ 
+
+El resultado indica la probabilidad de observar valores de cobertura mayores a 10\% según los puntos caracterizados en campo. En el siguiente gráfico podemos ver la correspondencia entre los valores observados y los predichos. Notese que la predicción en lugares alejados de los sitios muestreados toma un valor promedio.
+
+<<modeloCobertura,fig=true>>=
+image(ik.Cb[1],col=colores(30))
+points(pts,col=pts@data$Cobertura,cex=pts@data$Cobertura/2,pch=19)
+legend("bottomright",legend=1:4,col=1:4,pch=19,pt.cex=c(1:4)/2,title="Cobertura",horiz=T)
+@ 
+
+Aplicamos este mismo procedimiento a otras variables, por ejemplo la variable Cuerpo.de.Agua. En este caso el semi-variograma muestra una tendencia creciente.
+
+<<semivarianceAgua,fig=true,echo=false>>=
+ss <- !is.na(pts@data$Cuerpo.de.Agua)
+v.Ag = variogram(I(Cuerpo.de.Agua > 0)~1,pts[ss,])
+vm.Ag = fit.variogram(v.Ag, vgm(.3, "Exp", 100, 0.1))
+print(plot(v.Ag,vm.Ag))
+@ 
+
+Aplicamos la función de \texttt{krige} y observamos la predicción espacial. 
+
+<<iKrAgua,fig=true,echo=false>>=
+colores <- colorRampPalette(brewer.pal(9,"Blues"))
+ik.Ag = krige(I(Cuerpo.de.Agua > 0)~1, pts[ss,], JBM.grd, vm.Ag)
+spplot(ik.Ag[1],col.regions=colores(30))
+@ 
+
+En este caso observamos valores extremos ligeramente menores a cero y mayores a uno. Redondeamos estos valores para ajustarlos al intervalo de probabilidades.
+
+<<ajustariKrAgua>>=
+summary(ik.Ag[[1]])
+ik.Ag[[1]][ik.Ag[[1]]<0] = 0
+ik.Ag[[1]][ik.Ag[[1]]>1] = 1
+summary(ik.Ag[[1]])
+
+@ 
+
+El mapa resultante nos indica la ubicación de los cuerpos de agua en el área de estudio.
+
+<<CuerposAguaModelo,fig=true>>=
+image(ik.Ag[1],col=colores(30))
+points(pts,col=1,pch=c(1,19)[pts@data$Cuerpo.de.Agua+1])
+legend("bottomright",legend=c("Ausente","Presente"),col=1,pch=c(1,19),pt.cex=1,title="Cuerpos de Agua",horiz=T)
+@ 
+
+Seguimos el mismo procedimiento para la hojarasca y el resto de las variables.
+Para la altura del estrato superior el mapa generado va desde 0 (Ausencia de árboles, y presencia de matorral o herbaceas) a 1 (presencia de arboles).
+Distribución horizontal (1 cerrada, 2 abierta, 3 dispersa y 4 ausencia)
+
+Para Sustrato los valores de 1 indican presencia de sustrato  arenoso.
+Cobertura del dosel (1 abierto - 3 cerrado, 0: cobertura <10\%)
+
+<<semivarianceHojarasca,fig=false,echo=false>>=
+
+ss <- !is.na(pts@data$Hojarasca)
+v = variogram(I(Hojarasca > 0)~1,pts[ss,])
+vm = fit.variogram(v, vgm(.3, "Exp", 100, 0.1))
+##plot(v,vm)
+ik.Hj = krige(I(Hojarasca > 0)~1, pts[ss,], JBM.grd, vm)
+
+ss <- !is.na(pts@data$Altura.estrato.superior)
+v = variogram(I(Altura.estrato.superior < 3)~1,pts[ss,])
+vm = fit.variogram(v, vgm(.3, "Exp", 100, 0.1))
+ik.As = krige(I(Altura.estrato.superior < 3)~1, pts[ss,], JBM.grd, vm)
+
+ss <- !is.na(pts@data$Distribución.horizontal)
+v = variogram(I(Distribución.horizontal < 3)~1,pts[ss,])
+vm = fit.variogram(v, vgm(.3, "Exp", 100, 0.1))
+ik.Dh = krige(I(Distribución.horizontal < 3)~1, pts[ss,], JBM.grd, vm)
+
+ss <- !is.na(pts@data$Sustrato)
+v = variogram(I(Sustrato %in% 2)~1,pts[ss,])
+vm = fit.variogram(v, vgm(.13, "Exp", 10, 0.1))
+ik.St = krige(I(Sustrato %in% 2)~1, pts[ss,], JBM.grd, vm)
+@ 
+
+
+<<IkVariables,fig=true,echo=false>>=
+colores <- colorRampPalette(brewer.pal(9,"BuGn"))
+layout(matrix(1:6,ncol=2))
+image(ik.St[1],col=colores(30))
+image(ik.Dh[1],col=colores(30))
+image(ik.Cb[1],col=colores(30))
+image(ik.As[1],col=colores(30))
+image(ik.Hj[1],col=colores(30))
+image(ik.Ag[1],col=colores(30))
+
+@ 
+
+
+\section{Puntos muestreados y grabaciones}
+
+De los \Sexpr{nrow(Puntos)} puntos seleccionados originalmente se caracterizaron  y muestrearon \Sexpr{nrow(subset(Puntos,Anotador != "No muestreado"))}, pero sólo se cuentan con grabaciones para \Sexpr{nrow(subset(Puntos,Código %in% Grabaciones$Punto))} puntos, pues hubo algunas grabaciones que no se realizaron correctamente. 
+
+<<mapa1,echo=false,fig=true>>=
+plot(JBM.xy[JBM.xy@data$id %in% c(7,8,11),],col="green",border="wheat")
+
+legend("bottom",legend=c("no caracterizado","caracterizado sin grabación",NA,"una grabación","dos grabaciones","tres grabaciones"),pch=c(3,3,NA,19,19,19),pt.cex=c(.65,.65,NA,.85,1.25,1.75),horiz=F,col=c(2,1,NA,1,1,1),ncol=2)
+
+
+ss <- pts@data$Anotador != "No muestreado"
+points(pts,col=c("red",1)[1+(ss)],pch=3,cex=.65)
+tt <- table(Grabaciones$Punto)
+ss <- pts@data$Código %in% names(tt)[tt==1]
+points(pts[ss,],pch=19,cex=.85)
+ss <- pts@data$Código %in% names(tt)[tt==2]
+points(pts[ss,],pch=19,cex=1.25)
+ss <- pts@data$Código %in% names(tt)[tt==3]
+points(pts[ss,],pch=19,cex=1.75)
+
+@
+
+Para ver la distribución del esfuerzo de muestreo entre los dos días de trabajo de campo utilizamos la función \texttt{chron} del paquete \emph{chron} 
+
+<<HistFechas,fig=true>>=
+
+fechas <- chron(dates.=as.character(Muestreo$Fecha),
+              times.=sprintf("%s:00",as.character(Muestreo$Hini)),
+              format = c(dates = "ymd", times = "h:m:s"))
+horas <- chron(times.=sprintf("%s:00",as.character(Muestreo$Hini)),
+              format = c(dates = "ymd", times = "h:m:s"))
+layout(1:2)
+hist(fechas)
+title(main="Muestreos por fechas")
+hist(horas)
+title(main="Muestreos por horas")
+@ 
+
+También podemos ver a que horas se realizó cada muestreo, por ejemplo el grupo A fue muestreado desde la 1 hasta las 7, y el grupo F sólo fue muestreado de 6 a 10, pero los otros tres grupos fueron muestreados entre las 3 y 10 pm.
+
+<<Striphoras,fig=true>>=
+par(mar=c(2,2,0,0))
+stripchart(horas~Muestreo$Punto,axes=F)
+axis(1,c(13,15,17,19,21)/24,c("1pm","3pm","5pm","7pm","9pm"))
+axis(2,1:75,levels(Muestreo$Punto),
+     las=2, cex.axis=.5)
+box()
+abline(h=15*c(1,2,3,4)+.5,lty=3)
+@ 
+
+
+En las planillas se anotaron también las condiciones del muestreo:
+
+<<>>=
+table(Muestreo$Viento)
+table(Muestreo$Ruido)
+table(Muestreo$Cielo)
+@ 
+
+La posición y sustrato del micrófono no se anotó consistentemente:
+
+<<>>=
+table(Muestreo$Posición.mic)
+table(Muestreo$Sustrato.mic)
+@ 
+
+La humedad y temperatura se anotaron originalmente con las unidades de medición, lo cual no es recomendable, además para la temperatura se mezclan grados Farenheit y Centígrados. Parte de estos errores fueron corregidos.
+
+<<>>=
+table(Muestreo$Humedad)
+table(Muestreo$Temperatura)
+@ 
+
+Hacemos una variable nueva para la humedad relativa (HR) removiendo las anotaciones de porcentaje y cambiando las comas por puntos, y luego graficamos su comportamienta con respecto a la hora de muestreo:
+
+<<HR,fig=true>>=
+HR <- as.numeric(sub(",",".",sub("%","",Muestreo$Humedad)))
+plot(HR~horas)
+
+@ 
+
+%Vemos que hay una observación atípica, con un valor muy bajo, probablemente se trata de un error de tipeo. 
+
+Hacemos lo mismo con la temperatura, aplicando una transformación de Farenheit a Celsius para las que tienen valores muy altos:
+
+<<Temp,fig=true>>=
+Temp <- as.numeric(sub(",",".",sub("°[CF]","",Muestreo$Temperatura)))
+Temp[!is.na(Temp) & Temp>50] <- (Temp[!is.na(Temp) & Temp>50]-32)*5/9
+plot(Temp~horas)
+@ 
+
+%Igualmente hay una observación atípica por un error de tipeo.
+
+
+\section{Especies detectadas}
+
+La lista de especies conocidas del jardín botánico es la siguiente (datos de Larreal y Cardozo, presentados en congresos pero no publicados):
+\begin{itemize}
+  \item \emph{Rhinella marina} (Linnaeus, 1758)
+  \item \emph{Rhinella humboldti}  (Gallardo, 1965)
+  \item \emph{Ceratophrys calcarata} (Boulenger, 1890)
+  \item \emph{Dendropsophus microcephalus} (Cope, 1886)
+  \item \emph{Hypsiboas pugnax} (Schmidt, 1857)
+  \item \emph{Scinax ruber} (Laurenti, 1768)
+  \item \emph{Pseudis paradoxa} (Linnaeus, 1758)
+  \item \emph{Leptodactylus bolivianus} (Boulenger, 1898)
+  \item \emph{Leptodactylus fragilis}
+  \item \emph{Pleurodema brachyops} (Cope, 1869)
+  \item \emph{Engystomops pustulosus} (Lynch, 1970)
+\end{itemize}
+
+
+
+<<LeerDatosDetecciones,echo=false>>=
+
+if (!exists("VM")) {
+    ##VM <- read.xls("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/Occupancy_HistCapt_20141124.xlsx",as.is=T)
+    VM <- read.xls("~/Dropbox/CEBA/data/JardinBotanicoMaracaibo/Occupancy_HistCapt_20150107.xlsx",as.is=T)
+    
+    VM$Código <- sapply(VM$Archivo,function(x) strsplit(x,"_")[[1]][1])
+    VM$fecha <- as.numeric(sapply(VM$Archivo,function(x) strsplit(x,"_")[[1]][2]))
+    VM$os <- 3
+    VM$os[VM$Carpeta %in% "B5M" ] <- 9
+    VM$os[VM$Carpeta %in% "C5M" ] <- 15
+    
+    VM$hora <- sapply(VM$Archivo,function(x) {
+                          y <- strsplit(x,"_")[[1]][3]
+                          as.numeric(substr(y,1,2)) +
+                              as.numeric(substr(y,3,4))/60
+                      })
+    VM$hora <- VM$hora + VM$os/60
+}
+
+##stop()
+@ 
+
+Fragmentos por grabación
+<<>>=
+table(table(VM$Carpeta,VM$Código)[1,])
+
+table(table(VM$Código))
+
+@ 
+
+En estos fragmentos de grabaciones analizados se han detectado siete especies conocidas y dos aún no identificadas:
+\begin{enumerate}
+\item[Lf]	\emph{Leptodactylus fragilis}
+\item[Hp]	\emph{Hypsiboas pugnax}
+\item[Dm]	\emph{Dendropsophus microcephala}
+\item[Rh]	\emph{Rhinella humboldti}
+\item[Rm]	\emph{Rhinella marina}
+\item[Pb]	\emph{Pleurodema brachyops}
+\item[Ep] \emph{Engystomops pustulosus} 
+\item[SpA]	Especie ``A'' (no identificada)
+\item[SpB]	Especie ``B'' (no identificada)
+\end{enumerate}
+  
+A continuación se muestra el número total de detecciones para cada especie:
+
+<<EspeciesDetectadas>>=
+ colSums(VM[,3:11]>0)
+@ 
+
+Este valor incluye detecciones basadas en la inspección visual del espectrograma, y casos en los que se escuchan las vocalizaciones en la pista de audio aunque no se observa en el espectrograma. En estos últimos casos puede que se trate de vocalizaciones muy alejadas del micrófono, y por ello las vamos a excluir de los análisis.
+
+El número de detecciones basadas en el espectrograma sería el siguiente:
+<<EspeciesConEspectograma>>=
+colSums(VM[,3:11]>.5)
+@ 
+
+
+
+\subsection{Modelos de distribución y detección}
+
+<<ObjetoDeteccionesPrediccion,echo=false>>=
+
+if (!exists("VM.df")) {
+    VM.df <- cbind(VM,
+                   pts[match(VM$Código,pts$Código),c("Sustrato","Hojarasca","Distribución.horizontal","Cobertura", "Altura.estrato.superior","Cuerpo.de.Agua")],
+                   pts@coords[match(VM$Código,pts$Código),],
+                   Muestreo[match(VM$Archivo,with(Muestreo,paste(Punto,Fecha,sub(":","",Hinicio),sep="_"))),c("Posición.mic","Sustrato.mic", "Micrófono", "Viento", "Ruido", "Cielo","Temperatura", "Humedad")])
+    
+    coordinates(VM.df) <- c("x","y")
+    proj4string(VM.df) <- pts@proj4string
+    VM.df$Hojarasca <- over(VM.df,ik.Hj)[,1]
+    VM.df$Cuerpo.de.Agua <- over(VM.df,ik.Ag)[,1]
+    VM.df$Cobertura <- over(VM.df,ik.Cb)[,1]
+    VM.df$Distribución.horizontal <- over(VM.df,ik.Dh)[,1]
+    VM.df$Altura.estrato.superior <- over(VM.df,ik.As)[,1]
+    VM.df$Sustrato <- over(VM.df,ik.St)[,1]
+}
+@ 
+
+<<ObjetoEspacialDetecciones,echo=false>>=
+ss <- pts@data$Código %in% VM$Código
+pts@data$Lf <- pts@data$Código %in% subset(VM,Lf> 0.5)$Código
+pts@data$Hp <- pts@data$Código %in% subset(VM,Hp> 0.5)$Código
+pts@data$Pb <- pts@data$Código %in% subset(VM,Pb> 0.5)$Código
+pts@data$Dm <- pts@data$Código %in% subset(VM,Dm> 0.5)$Código
+pts@data$Rh <- pts@data$Código %in% subset(VM,Rh> 0.5)$Código
+pts@data$Rm <- pts@data$Código %in% subset(VM,Rm> 0.5)$Código
+pts@data$Ep <- pts@data$Código %in% subset(VM,Ep> 0.5)$Código
+pts@data$SpA <- pts@data$Código %in% subset(VM,SpA> 0.5)$Código
+pts@data$SpB <- pts@data$Código %in% subset(VM,SpB> 0.5)$Código
+
+colores <- colorRampPalette(brewer.pal(9,"Greens"))
+@ 
+
+
+Los modelos mixtos de probabilidad de presencia y detección (``occupancy models'') se basan en una regresión logística pero modelan explicitamente el proceso de detección y permiten obtener estimados independientes de probabilidad de presencia y probabilidad de detección. En este caso se requieren de historias de detección por punto de muestreo (varias visitas u observaciones independientes por punto) para estimar la probabilidad de detectar una especie en caso de estar presente.
+
+<<PrepararObjetoOccu,echo=false>>=
+
+## range(table(VM$Código)) ## de 2 a 9
+
+fch <- hrs <- mtz <- matrix(nrow=length(unique(VM$Código)),
+                            ncol=9,dimnames=list(unique(VM$Código),1:9))
+
+for (j in unique(VM$Código)) {
+  ##  fch[j,] <- c(subset(VM,Código %in% j & Carpeta %in% "A5M")$fecha,
+  ##             rep(NA,3))[1:3]
+  fch[j,] <- c(subset(VM,Código %in% j)$fecha,rep(NA,9))[1:9]
+  hrs[j,] <- c(subset(VM,Código %in% j)$hora,rep(NA,9))[1:9]
+}
+
+fch <- fch-20141008
+
+sC <- cbind(VM.df@coords[match(rownames(mtz),VM.df@data$Código),],
+            VM.df@data[match(rownames(mtz),VM.df@data$Código),c("Sustrato","Hojarasca","Distribución.horizontal","Cobertura","Altura.estrato.superior","Cuerpo.de.Agua")])
+
+oC <- list(fecha=fch,
+           hora=(hrs-mean(hrs,na.rm=T))/sd(as.vector(hrs),na.rm=T))
+
+for (spp in c("Lf","Hp","Rm","Rh","Dm","Pb","SpA","SpB","Ep")) {
+  mtz <- matrix(nrow=length(unique(VM$Código)),
+                ncol=9,dimnames=list(unique(VM$Código),1:9))
+  
+  for (j in unique(VM$Código)) {
+    mtz[j,] <- 0+c(subset(VM,Código %in% j)[,spp]>.5,rep(NA,9))[1:9]
+  }
+  assign(sprintf("uF.%s",spp),unmarkedFrameOccu(mtz, 
+                                                 siteCovs=sC,
+                                                 obsCovs=oC))
+}
+
+##plot(mtz~hrs)
+
+
+@ 
+
+Ajustamos los modelos, con los datos actuales aún incompletos no tenemos suficiente datos para ajustar todos los modelos. Para una especies no converge ningún modelo y para dos no logramos convergencia con el modelo completo pero si con modelos más sencillos
+
+Selección de modelos con AICc (corregido por tamaño muestral)
+
+Las formulas utilizadas son:
+
+\begin{itemize}
+  \item para la probabilidad de detección el polinomio de segundo grado de la hora
+    \item para la probabilidad de presencia 
+      \begin{itemize}
+      \item full:  Sustrato, Hojarasca, Distribución.horizontal, Cobertura, Altura.estrato.superior, Cuerpo.de.Agua
+      \item agua:  Cuerpo.de.Agua
+      \item veg: Distribución.horizontal, Cobertura y Altura.estrato.superior
+      \item suelo: Sustrato y Hojarasca
+      \item agua.veg : Cuerpo.de.Agua y Altura.estrato.superior
+      \item agua.suelo:  Cuerpo.de.Agua y Hojarasca
+      \item veg.suelo: Altura.estrato.superior y Hojarasca
+      \item nulo: probabilidad constante
+  \end{itemize}
+  \end{itemize}
+
+
+
+<<modselLf,echo=false>>=
+
+##ahora con AICc
+
+nwdt <- data.frame(hora=(seq(12,22,length=30)-mean(hrs,na.rm=T))/sd(as.vector(hrs),na.rm=T),o=seq(12,22,length=30))
+nwd2 <- data.frame(ik.Hj@coords,
+                   Hojarasca=ik.Hj@data[,1],
+                   Cuerpo.de.Agua=ik.Ag@data[,1],
+                   Sustrato=ik.St@data[,1],
+                   Distribución.horizontal=ik.Dh@data[,1],
+                   Cobertura=ik.Cb@data[,1],
+                   Altura.estrato.superior=ik.As@data[,1])
+
+if (!exists("ms.Dm")) {
+    for (spp in c("Lf","Rm","Rh","Pb","Hp","SpB","Dm")) {
+        uF <- get(sprintf("uF.%s",spp))
+        fl <- list(full=occu(~hora+I(hora^2) ~ Sustrato + Hojarasca + Distribución.horizontal + Cobertura + Altura.estrato.superior + Cuerpo.de.Agua,
+               uF),
+                   agua=occu(~hora+I(hora^2) ~  Cuerpo.de.Agua,
+                       uF),
+                   veg=occu(~hora+I(hora^2) ~  Distribución.horizontal + Cobertura + Altura.estrato.superior,
+               uF),
+                   suelo=occu(~hora+I(hora^2) ~  Sustrato + Hojarasca,  
+                       uF),
+                   agua.veg= occu(~hora+I(hora^2) ~  Cuerpo.de.Agua + Altura.estrato.superior,
+               uF),  
+                   agua.suelo=occu(~hora+I(hora^2) ~  Cuerpo.de.Agua + Hojarasca,                  
+                       uF),
+                   veg.suelo=occu(~hora+I(hora^2) ~  Altura.estrato.superior + Hojarasca,                  
+                       uF),
+                   nulo=occu(~hora+I(hora^2) ~ 1,    uF))
+        ms <- aictab(fl,sort=F)
+        ms$Rsq <- sapply(fl,unmarked:::nagR2,fl[[8]])
+        assign(sprintf("ms.%s",spp),ms)
+        assign(sprintf("fl.%s",spp),fl)
+        prd <- modavgPred(fl,newdata=nwdt, second.ord = TRUE, type = "link",parm.type="detect")
+        assign(sprintf("p.%s",spp),
+
+   
+                       cbind(boot::inv.logit(prd$mod.avg.pred),
+                             boot::inv.logit(prd$mod.avg.pred-1.96*prd$uncond.se),
+                             boot::inv.logit(prd$mod.avg.pred+1.96*prd$uncond.se)))
+               prd <- modavgPred(fl,newdata=nwd2,type="link",parm.type="psi")
+        
+               prd02 <- ik
+        prd02@data$psi <- boot::inv.logit(prd$mod.avg.pred)
+        prd02@data$SE <- boot::inv.logit(prd$uncond.se)
+        prd02@data$lwr <- boot::inv.logit(prd$mod.avg.pred-1.96*prd$uncond.se)
+        prd02@data$upr <- boot::inv.logit(prd$mod.avg.pred+1.96*prd$uncond.se)
+        
+        assign(sprintf("psi.%s",spp),
+               prd02)
+    }
+    
+}
+@
+
+Ajustamos todos los modelos para siete especies, excluimos las que tienen menos detecciones. La tabla de selección de modelos para Lf sugiere que para esta especie el mejor modelo fue agua.suelo ($R^2$ de Nagelkerke $=$ \Sexpr{round(ms.Lf$Rsq,2)}) , pero algunas alternativa reciben algo de peso (suelo, veg.suelo, agua, etc):
+
+<<>>=
+ms.Lf
+@ 
+
+Comparando los pesos de AIC y los $R^2$ de todos los modelos para todas las especies tenemos las siguientes tablas:
+
+\begin{landscape}
+<<echo=false,results=tex>>=
+
+ms.ttl <- cbind(mod=names(fl),
+                with(ms.Rm,
+                     data.frame(Rm.AICc=round(AICc,3),
+                                Rm.AICw=round(AICcWt,3),
+                                Rm.Rsq=round(Rsq,3))),
+                with(ms.Lf,
+                     data.frame(Lf.AICc=round(AICc,3),
+                                Lf.AICw=round(AICcWt,3),
+                                Lf.Rsq=round(Rsq,3))),
+                with(ms.SpB,
+                     data.frame(SpB.AICc=round(AICc,3),
+                                SpB.AICw=round(AICcWt,3),
+                                SpB.Rsq=round(Rsq,3))),
+                with(ms.Rh,
+                     data.frame(Rh.AICc=round(AICc,3),
+                                Rh.AICw=round(AICcWt,3),
+                                Rh.Rsq=round(Rsq,3))),
+                with(ms.Hp,
+                     data.frame(Hp.AICc=round(AICc,3),
+                                Hp.AICw=round(AICcWt,3),
+                                Hp.Rsq=round(Rsq,3))),
+                with(ms.Pb,
+                     data.frame(Pb.AICc=round(AICc,3),
+                                Pb.AICw=round(AICcWt,3),
+                                Pb.Rsq=round(Rsq,3))),
+                with(ms.Dm,
+                     data.frame(Dm.AICc=round(AICc,3),
+                                Dm.AICw=round(AICcWt,3),
+                                Dm.Rsq=round(Rsq,3))))
+
+ms.ttl$Sum.AICw <- rowSums(ms.ttl[,grep("AICw",colnames(ms.ttl))])
+ms.ttl$Sum.Rsq <- rowSums(ms.ttl[,grep("Rsq",colnames(ms.ttl))])
+
+xtable(ms.ttl[,c("mod",grep("AICc",colnames(ms.ttl),value=T))])
+xtable(ms.ttl[,c("mod",grep("AICw",colnames(ms.ttl),value=T))])
+xtable(ms.ttl[,c("mod",grep("Rsq",colnames(ms.ttl),value=T))])
+@ 
+\end{landscape}
+
+Esto se puede resumir de la siguiente forma: Los modelos que incluyen la variable Cuerpos.de.Agua (agua, agua.veg, agua.suelo y full) son muy importantes para Rm, SpB, Pb y Lf, o sea, es necesario incluir esta variable para explicar su distribución. Para el caso de Rm, SpB y Pb se puede decir que son importantes y suficientes, pues reciben más del 90\% del peso de Akaike
+
+<<>>=
+colSums(subset(ms.ttl,grepl("agua",mod) | grepl("full",mod))[,grep("AICw",colnames(ms.ttl))])
+@ 
+
+Igualmente, los modelos con la variable Hojarasca son muy importantes para Lf, Hp y Dm, pero sólo para Lf se puede decir que estos modelos son suficientes.
+<<>>=
+colSums(subset(ms.ttl,grepl("suelo",mod) | grepl("full",mod))[,grep("AICw",colnames(ms.ttl))])
+@ 
+
+Por otro lado, los modelos con la variable Altura.estrato.superior son importantes para Hp, y relativamente importantes (pesos de Akaike entre 0.4 y 0.7) para Pb, Rm, Rh.
+
+<<>>=
+colSums(subset(ms.ttl,grepl("veg",mod) | grepl("full",mod))[,grep("AICw",colnames(ms.ttl))])
+@ 
+
+Debido a que los pesos de Akaike se distribuyen entre varios modelos, no se puede hablar de un modelo superior a los otros, y por ello es preferible hacer predicciones ponderadas para estimar las relaciones de interés. 
+
+Verificamos primero las predicciones ponderadas de probabilidad de detección (línea contínua: promedio ponderado de los modelos, líneas segmentadas=intervalos de confianza del 95\%) para cada especie en función de la hora y vemos que hay diferencias importantes entre especies.
+
+\setkeys{Gin}{width=\textwidth}
+
+<<Detecciones,echo=false,fig=true>>=
+##pdf(file = "~/Escritorio/Figura2_AnfibiosJBM.pdf",
+##    width="7", height="5")
+##jpeg(filename = "~/Escritorio/Figura2_AnfibiosJBM.jpeg",
+##     width = 700, height = 500, units = "px", pointsize = 12,
+##     quality = 90)
+
+layout(matrix(c(1,2,3,4,5,8,6,7,9),ncol=3))
+par(mar=c(0.1,0.1,0.1,0.1),oma=c(6,6,1,2))
+
+
+matplot(nwdt$o,p.Rm,xlab="",ylab="",axes=F,col=1,
+        type="l",lty=c(1,2,2),ylim=c(0,1),main="",cex.lab=2)
+box()
+axis(2,cex.axis=1.5)
+legend(12,.75,"Rm",bty="n",cex=1.2)
+
+matplot(nwdt$o,p.Rh,xlab="",ylab="",axes=F,col=1,
+        type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+legend(13,.75,"Rh",bty="n",cex=1.2)
+  matplot(nwdt$o,p.SpB,xlab="",ylab="",axes=F,col=1,
+            type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+axis(2,cex.axis=1.5)
+legend(13,.75,"Rsp",bty="n",cex=1.2)
+axis(1,cex.axis=1.5)
+
+matplot(nwdt$o,p.Lf,xlab="",ylab="",axes=F,col=1,
+        type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+legend(13,.75,"Lf",bty="n",cex=1.2)
+  matplot(nwdt$o,p.Pb,xlab="",ylab="",axes=F,col=1,
+            type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+legend(13,.75,"Pb",bty="n",cex=1.2)
+##axis(4,cex.axis=1.5)
+
+matplot(nwdt$o,p.Dm,xlab="",ylab="",axes=F,col=1,
+            type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+legend(13,.75,"Dm",bty="n",cex=1.2)
+  matplot(nwdt$o,p.Hp,xlab="",ylab="",axes=F,col=1,
+            type="l",lty=c(1,2,2),ylim=c(0,1),main="")
+box()
+legend(13,.75,"Hp",bty="n",cex=1.2)
+axis(1,cex.axis=1.5)
+axis(4,cex.axis=1.5)
+mtext("Hora",1,line=3.5,outer=T,cex=1.2)
+mtext("Probabilidad de detección",2,line=3.5,outer=T,cex=1.2)
+##dev.off()
+@
+
+
+Para Rm y Dm los estimados de probabilidad de detección son poco confiables (intervalos de confianza muy amplios, especialmente antes de las 5pm). Para Lf y Rm se observa una relación lineal, con probabilidades mayores a más altas horas de la noche, para el resto de las especies los estimados muestran un óptimo entre las 7 y 9 pm, aunque en unas especies es más marcado (intervalos de actividad más estrechos en Pb, SpB y Rh ) que en otras (intervalos de actividad más amplios, Hp y Dm).
+
+
+Vemos ahora la predicción espacial ponderada de los modelos. Rh y Hp tienen probabilidades de presencia alta en en casi toda el área, Lf tiene estimados mayores en la zona central. SpB, Pb y Rm parecen estar confinados a los cuerpos de agua (especialmente los grandes) y Dm tiene valores de probabilidades muy bajos.
+
+\setkeys{Gin}{width=\textwidth}
+
+<<echo=false,fig=true>>=
+colores <- colorRampPalette(brewer.pal(9,"Greens"))
+##jpeg(filename = "~/Escritorio/Figura3_AnfibiosJBM.jpeg",
+##     width = 700, height = 500, units = "px", pointsize = 12,
+##     quality = 90)
+
+##pdf(file = "~/Escritorio/Figura3_AnfibiosJBM.pdf",
+##    width="7", height="5")
+layout(matrix(c(1,2,3,4,5,8,6,7,9),ncol=3))
+
+par(mar=c(1,1,1,1))
+for (spp in c("Rm","Rh","SpB","Lf","Pb","Dm","Hp")) {
+    psi <- get(sprintf("psi.%s",spp))
+    image(psi["psi"],col=colores(30),breaks=seq(0,1,
+                                    length=31))
+  points(pts[ss,],col=1,pch=c(1,19)[pts@data[ss,spp]+1],cex=1)
+ ## legend("bottomright",legend=c("No detectado","Detectado"),col=1,pch=c(1,19),pt.cex=.7,title=spp,horiz=F,cex=.7)
+     legend("topleft",legend=ifelse(spp %in% "SpB","Rsp",spp),col=1,pch=NA,cex=1.2,bty="n")
+}
+
+plot(0,axes=F,pch=NA)
+legend("top",fill=rev(colores(11)),legend=sprintf("%0.1f",rev(seq(0,1,by=.1))),
+       title=expression(Psi))
+
+##dev.off()
+@ 
+
+Igualmente visualizamos el error estandard incondicional de la predicción ponderada. Para Pb, Rm y Spb el error es muy alto en toda el área de estudio, pero esto puede estar ligado a su fuerte asociación con los cuerpos de agua. 
+
+<<echo=false,fig=true>>=
+colores <- colorRampPalette(brewer.pal(9,"Oranges"))
+layout(matrix(1:9,ncol=3,byrow=T))
+par(mar=c(0,0,0,0))
+for (spp in c("Dm","Rm","SpB","Pb","Lf","Hp","Rh")) {
+    psi <- get(sprintf("psi.%s",spp))
+    image(psi["SE"],col=colores(30))
+    points(pts[ss,],col=1,pch=c(1,19)[pts@data[ss,spp]+1])
+    legend("bottomright",legend=c("No detectado","Detectado"),col=1,pch=c(1,19),pt.cex=.7,title=spp,horiz=F,cex=.7)
+}
+
+@ 
+
+
+Podemos comparar ahora los estimados de área ocupada multiplicando el área de los pixeles por las probabilidades de presencia. (Los intervalos de confianza están basados en una distribución asintóticamente normal de los errores en la escala del logit y luego retransformados a la escala de probabilidades).
+
+La incertidumbre en los estimados de Rm, SpB y Pb no permite hacer comparaciones (intervalos de confianza entre 0 y el área total de \Sexpr{round(prod(prd00@grid@cellsize)*nrow(prd00@data),1)} $m^2$). Excluyendo esas especies podemos decir que Dm ocupa un área significativamente menor que el resto. Además, entre Lf y Rh hay diferencias significativas, pero no entre Lf y Hp o entre Hp y Rh. 
+
+<<TablaArea,echo=false>>=
+mres <- prod(prd00@grid@cellsize)
+round(rbind(
+    Dm=colSums(psi.Dm@data[,c("lwr","psi","upr")])*mres,
+    Rm=colSums(psi.Rm@data[,c("lwr","psi","upr")])*mres,
+    SpB=colSums(psi.SpB@data[,c("lwr","psi","upr")])*mres,
+    Pb=colSums(psi.Pb@data[,c("lwr","psi","upr")])*mres,
+    Lf=colSums(psi.Lf@data[,c("lwr","psi","upr")])*mres,
+    Hp=colSums(psi.Hp@data[,c("lwr","psi","upr")])*mres,
+    Rh=colSums(psi.Rh@data[,c("lwr","psi","upr")])*mres))
+ 
+
+@ 
+
+Se podría decir que Dm es la especie más ``rara'' o escasa dentro del ensemble de especies, pero a diferencia de las especies Rm, SpB y Pb que están restringidas a los cuerpos de agua (altas probabilidades dentro de los cuerpos de agua y bajas probabilidades en el resto del área), el estimado de área de Dm se debe a bajas probabilidades a lo largo del área de estudio.  
+
+Esta especie está positivamente relacionada con la hojarasca. El estimado ponderado de este parámetro es alto en magnitud y su intervalo de confianza excluye el 0. 
+
+<<>>=
+modavg(    fl.Dm,parm="Hojarasca",parm.type="psi")
+
+@ 
+
+Su relación con la altura del estrato superior y los cuerpos de agua es positiva pero de baja magnitud y los intervalos de confianza incluyen el 0.
+
+<<>>=
+modavg(    fl.Dm,parm="Altura.estrato.superior",parm.type="psi")
+@ 
+
+<<>>=
+modavg(    fl.Dm,parm="Cuerpo.de.Agua",parm.type="psi")
+@ 
+
+La evidencia sugiere que esta especie es sensible a la cantidad de hojarasca y potencialmente vulnerable a cambios en esta variable. Sin embargo hay que tener un poco de cautela en la interpretación, pues los resultados pueden deberse a un tamaño poblacional pequeño durante la epoca del muestreo (fluctuaciones estacionales) o un patrón de actividad perturbado por el ruido. 
+
+Revisar detalles sobre la especie en \url{http://amphibiaweb.org/cgi/amphib_query?where-genus=Dendropsophus&where-species=microcephalus}:
+
+``During the mating season, the male frogs gather in large groups around the breeding areas and call from grasses or sedges at the edge of water, or while perched on emergent vegetation. Preferred breeding areas are temporary ponds, shallow ditches, or marshes. The eggs of this species are laid on or near the surface of the water, where they are usually attached to emergent vegetation (Duellman 2001).
+
+Males usually sing in large choruses, with thousands of individuals. However, during the dry season, only a few males may gather and call from a drying swamp (Campbell 1998). Instead of calling independently, males will respond to conspecific males and other male species within a group. In an experiment conducted by Schwartz and Wells (1985), males synchronized to individual calls and also responded to distant choruses. Some female species preferred males with more aggressive and repetitive calling, and D. microcephalus began calling more repetitively and rapidly when females were nearby (Schwartz and Wells 1985). Males will avoid note and call overlap because it impairs their ability to distinguish themselves to potential mates and prevents them from hearing and assessing their neighbor's calls (Schwartz 1987). Kaiser et al. (2011) found that anthropogenic noise decreases both the long- and short-term duration of individual male frog presence in the breeding chorus. Since females join the choruses later at night, the effect of increased exogenous noise is to decrease the time males and females overlap at the breeding pond.
+
+Trends and Threats
+This species appears to be both abundant and increasing, and occurs within a number of protected areas (Bolaños et al. 2008). It can tolerate disturbed habitat and has been found near roads and human settlements (Bolívar-G et al. 2009). However, a study by Kaiser et al. (2011) found that anthropogenic noise had the effect of decreasing the amount of time males spent in the breeding chorus, both short-term and long-term. This phenomenon may result in local declines.''
+
+
+<<RuidoDm>>=
+
+table(VM.df$Dm %in% 1,VM.df$Ruido)
+table(VM.df$Dm %in% 1,VM.df$Hp %in% 1)
+table(VM.df$Dm %in% 1,VM.df$Lf %in% 1)
+
+table(VM.df$Dm %in% 1,VM.df$Rm %in% 1)
+table(VM.df$Dm %in% 1,VM.df$Rh %in% 1)
+table(VM.df$Dm %in% 1,VM.df$Pb %in% 1)
+table(VM.df$Dm %in% 1,VM.df$SpB %in% 1)
+
+@ 
+
+%%\section*{Referencias}
+%% en vez de printbibliography
+%%\bibliography{/home/jferrer/CEBA/lib/BibTEX/Suelos}
+%%/home/jferrer/CEBA/lib/BibTEX/JBM
+\bibliography{/home/mapoteca/NeoMapas/lib/BibTEX/DocumentosNM.bib}
+
+
+\end{document}

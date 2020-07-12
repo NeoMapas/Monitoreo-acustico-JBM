@@ -1,0 +1,462 @@
+\documentclass[spanish,12pt]{article}
+\usepackage[utf8]{inputenc} 
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{lscape}
+
+\usepackage[shiftmargins]{vmargin}
+\setpapersize{USletter}
+%%\setmarginsrb{left}{top}{right}{bottom}{headhgt}{headsep}{foothgt}{footskip}
+\setmarginsrb{3.2cm}{2cm}{1.8cm}{2cm}{0.5cm}{0.5cm}{0.5cm}{0.5cm}
+
+\usepackage[Glenn]{fncychap}
+\usepackage{longtable}
+%% cambiamos a biblatex
+%%\usepackage[authoryear,sort]{natbib}
+
+\usepackage[natbib=true, style=authoryear]{biblatex}
+\bibliography{/Users/jferrer/CEBA/lib/BibTEX/CursoDistribucion}
+
+
+
+\usepackage[pagebackref=false,colorlinks=true,citecolor=black,linkcolor=black,filecolor=black,urlcolor=black]{hyperref}
+
+\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+\usepackage{titling}
+
+\pretitle{\begin{center} 
+\large \colorbox{black}{\textcolor{white}{Laboratorio de Ecología Espacial}} \par \HRule \\[0.4cm] \LARGE }
+\posttitle{\par \HRule \\[1.5cm]
+%\includegraphics[width=8cm]{/Users/jferrer/NeoMapas/img/logo_NeoMapas.jpg}
+\end{center}\vskip 0.5em}
+
+\preauthor{\large\begin{center}}
+\postauthor{\\
+Laboratorio de Ecología Espacial, Centro de Estudios Botánicos y Agroforestales\\Instituto Venezolano de Investigaciones Científicas
+\end{center}
+\par}
+
+\predate{\begin{center}\normalsize Guía para el estudiante\\\Sexpr{cdg.doc}\\}
+\date{Versión de \today}
+\postdate{\par\end{center}}
+
+
+\title{Estacionalidad y tendencias en el clima y la vegetación de un fragmento semi-urbano de bosque seco en el municipio San Francisco, estado Zulia}
+\author{JR Ferrer-Paris}
+
+\begin{document}
+\maketitle
+%\bibliographystyle{/Users/jferrer/NeoMapas/lib/custom-bib/tesis}
+
+
+\chapter*{A quien pueda interesar}
+
+<<echo=false, eval=true, results=hide>>=
+require(chron)
+require(raster)
+require(RColorBrewer)
+
+paquetes <- (.packages())
+paquetes <- paquetes[!(paquetes %in% c("stats", "graphics", "grDevices", "utils", "datasets", "methods", "base", "deldir", "DBI", "RMySQL"))]
+
+luq <- function(x,contar.NA=FALSE) {
+	if (contar.NA==F) {
+	x <- x[!is.na(x)]
+	}
+ length(unique(x))
+ }
+
+@
+
+Este documento es generado utilizando las funciones de \texttt{Sweave} desde una sesión de \emph{R} \citep{pqt::base}, por tanto todas las tablas y figuras se generan y actualizan automáticamente a partir de los datos suministrados. Para acceso al código fuente en \emph{R} y los archivos de datos contacte al primer autor. Dentro de \emph{R} utilizamos los paquetes 
+<<citas paquetes, results=tex, echo=false, eval=true>>=
+cat(paste("\\emph{",paquetes,"} \\citep{pqt::",paquetes,"}",sep="",collapse="; "))
+@
+.
+
+\section{Introducción}
+
+Los bosques secos de la cuenca del Lago de Maracaibo han sufrido una alta tasa de deforestación, fragmentación y transformación y se estima que sólo se mantiene el 12% de la cobertura original (Portillo-Quintero et al 2012). Uno de los fragmentos remanentes más emblemáticos está ubicado a unos 20km al sur de la ciudad de Maracaibo entre los terrenos del Jardín Botánico de Maracaibo, la Base Aérea Rafael Urdaneta y el Aeropuerto Internacional “La Chinita”. La situación de este fragmento es vulnerable pues tiene una extensión menor a 450 ha, y está rodeado por una matriz de actividades intensivas (viviendas, infraestructura, ganadería, etc.), pero a la vez tiene un valor estratégico por su ubicación entre los municipios Maracaibo y San Francisco, y su potencial uso  recreacional, educativo y científico. 
+
+Dentro de este fragmento se produjo una intervención importante en la cara norte durante los años 1979 a 1983 por la creación del Jardín Botánico de Maracaibo (JBM). Durante los años 80 estuvo considerado entre los 8 principales jardínes botánicos de Venezuela, entre los que destacaba por su programa pionero de formación en horticultura, pero la continuidad de sus operaciones sufrió crónicamente por la falta de apoyo institucional y la declinación progresiva de personal técnico y profesional (Huber et al 1998 Estado actual...). Para 1992 habían cesado casi por completo las actividades básicas de mantenimiento y cuidado de las áreas verdes (Hernandez y Parra Diccionario General del Zulia). A partir de esta fecha se observaron procesos de transformación natural de la vegetación en las áreas abandondas, con intervenciones puntuales por actividades de baja intensidad realizadas por vecinos y residentes (extracción forestal, pastoreo y cultivos focalizados, Chourio com. pers.). A pesar de un interés continuado de la Fundación Jardín Botánico de Maracaibo por recuperar el área y de varias iniciativas institucionales y privadas, no hubo mayores intervenciones hasta que en 2013 se realizaron trabajos de desmalezamiento, limpieza e intervención para acondicionar el área de visitantes y algunas caminerías y ciclovías.
+
+En la parte sur del fragmento se ha mantenido una intervención humana de menor intensidad enfocada principalmente en los bordes de las vías de acceso y delimitación, etc.
+
+Entre 1973 y 1974 se realizó un estudio de la vegetación de la zona y se desarrollo una florula local para caracterizar el bosque antes de la intervención que significó el desarrollo del JBM. Lamentablemente no se han encontrado documentos sobre la introducción de especies y la composición florística de las áreas intervenidas durante el periodo inicial de funcionamiento del JBM. Sin embargo diversas instituciones, entre ellas La Universidad del Zulia (LUZ) y el Instituto Venezolano de Investigaciones Científicas (IVIC), están promoviendo estudios locales sobre la composición florística, cobertura vegetal, y la fauna de vertebrados e invertebrados de la zona (Larreal et al 2012, etc). 
+
+Zambrano y Fuenmayor (197X) clasifican el área como bosque muy seco tropical. 
+En el mapa de Vegetación de Huber y Alarcón (1988), esta área entra en la región B (Llanuras), subregión B1 (Depresión de Maracaibo), y pueden observarse formaciones de arbustales xerófilos espinosos ('cardonales y espinares', comunidades bajas entre 3-8m de altura, con gran proporción de especies armadas)  y bosques xerófilos bajos, deciduos (hasta 12-15m de altura, con dos estratos arbóreos deciduos y un sotobosque bien definido y denso). Esta región pertenece a la Provincia fitogeográfica del Caribe Meridional, pero aparentemente no presenta ninguna especie característica del denominado Distrito fitogeográfico Zuliano.
+
+El objetivo del presente estudio es caracterizar la historia reciente del clima y la fenología de la vegetación en este importante fragmento boscoso a partir de datos de estaciones climáticas y sensores remotos, a fin de sentar una linea base para estudios futuros. Los datos recabados permiten señalar tendencias temporales que pueden ayudar a entender las transformación que ha sufrido la zona en el pasado y que podría sufrir en el futuro cercano.
+
+\section{Métodos}
+
+\subsection{SIG}
+
+<<mapoteca>>=
+mptc <- "~/CEBA/lib/mapoteca/"
+mapaDB <- "Maracaibo"
+LC <- raster(sprintf("%s/%s/%s",mptc,mapaDB,"MCD12Q1.A2005001.Maracaibo_LC1.tif"))
+bosque <- raster(sprintf("%s/%s/GFC2013/%s",mptc,mapaDB,"GFC2013.Maracaibo.treecover2000.tif"))
+perdida <- raster(sprintf("%s/%s/GFC2013/%s",mptc,mapaDB,"GFC2013.Maracaibo.loss.tif"))
+ganancia <- raster(sprintf("%s/%s/GFC2013/%s",mptc,mapaDB,"GFC2013.Maracaibo.gain.tif"))
+frags <- clump(bosque>40)
+sfrags <- clump(ganancia)
+
+tt <- rev(sort(table(values(frags))))
+values(frags)[values(frags) %in% as.numeric(names(tt)[tt<200])] <- 999
+table(values(sfrags))
+plot(sfrags %in% 446)
+tt <- rev(sort(table(values(frags))))
+
+slc <- c(426, 441, 442) 
+plot(frags %in% slc[1:2])
+
+r0 <- (frags %in% slc[1:2]) + sfrags %in% 446
+JBM <- rasterToPolygons(r0, fun=function(x) {x %in% 1},dissolve=T)
+
+
+
+municipio <- shapefile(sprintf("%s/%s",mptc,"VEN_adm2.shp"))
+vialidad <- shapefile(sprintf("%s/%s",mptc,"VEN_roads.shp"))
+
+subset(municipio@data,NAME_2 %in% c("Maracaibo","San Francisco") & NAME_1 %in% "Zulia")
+rADM2 <- rasterize(municipio,bosque,field="ID_2")
+
+xarea <- median(values(area(rADM2)))
+
+@ 
+
+\subsection{Datos de estación meteorológica}
+
+Obtuvimos datos de la estación meteorológica 804070 (también referida como 80407, o con el serial nacional 1015) ubicada en el Aeropuerto Internacional La Chinita en Maracaibo (N10°34' W71°44', 65msnm), dentro del área de estudio. La estación cuenta con un registro histórico desde 1959 hasta el 2013, pero los datos previos a 1972 provienen de una ubicación diferente (antiguo Aeropuerto Grano de Oro) y no los incluimos en el presente análisis. 
+
+Los datos fueron descargados del enlace \href{http://www.tutiempo.net/clima/Maracaibo-La_Chinita/804070.htm}
+<<bajarDatosClimaticos,eval=false>>=
+ cd ~/CEBA/data/JardinBotanicoMaracaibo/climaviejo
+for (yy in 1959:2013) {
+  for (mm in 1:12) {
+    system(sprintf("wget --continue 'http://www.tutiempo.net/clima/Maracaibo-La_Chinita/%02d-%04d/804070.htm' --output-document=/home/jferrer/CEBA/data/JardinBotanicoMaracaibo/climaviejo/E804070_%04d_%02d.htlm",mm,yy,yy,mm))
+  }
+}
+
+@ 
+
+Normales Climatológicas de Venezuela. Periodo 1961/1990. República de Venezuela, Ministerio de la Defensa, Fuerza Aérea Venezolana, Servicio de Meteorología. Sistema CLICOM. Maracay Octubre de 1993
+
+
+<<DatosClimaticos>>=
+if (file.exists("~/CEBA/Rdata/JBMts.rda")) {
+  load(file="~/CEBA/Rdata/JBMts.rda")
+}
+if (!exists("dts.clm")) {
+  dts.clm <- data.frame()
+  for (year in 1959:2013) {
+    for (month in 1:12) {
+      if (file.exists(sprintf("~/CEBA/data/JardinBotanicoMaracaibo/climaviejo/E804070_%i_%02i.htlm",year,month))) {
+        system(sprintf("html2text ~/CEBA/data/JardinBotanicoMaracaibo/climaviejo/E804070_%i_%02i.htlm > prueba.txt",year,month))
+      
+        ##j <- as.numeric(system("grep -n 'Valores medios climáticos' prueba.txt | cut -d: -f1",intern=T))+2
+        j <- as.numeric(system("grep -n 'Valores históricos' prueba.txt | cut -d: -f1",intern=T))+1
+        k <- as.numeric(system("grep -n 'Medias y totales mensuales' prueba.txt | cut -d: -f1",intern=T))-1
+        if (length(j)>0) {
+          system(sprintf("sed -n %s,%sp prueba.txt > tabla",j,k))
+          ##k=`grep -n "Medias y totales mensuales" prueba.txt| cut -d: -f1`
+          ##let "j += 2"
+          ##let "k -= 1"
+          ##sed -n $j,$kp prueba.txt > tabla
+          ##sed -n $j,+31p prueba.txt > tabla
+          
+          
+          tt <- read.table("tabla",sep="",as.is=T)
+          dts.clm <- rbind(dts.clm,data.frame(year,month,day=1:nrow(tt),
+                                        tmean=as.numeric(tt$DíaT),
+                                        tmin=as.numeric(tt$Tm),
+                                        tmax=as.numeric(tt$TM),
+                                        H=as.numeric(tt$H),
+                                        PP=as.numeric(tt$PP),
+                                        VV=as.numeric(tt$VV)))
+        }
+      }
+    }
+  }
+  tt <- chron(dates.=sprintf("%04d/%02d/%02d",dts.clm$year,dts.clm$month,dts.clm$day),
+              format = c(dates = "y/m/d"))
+  dts.clm$doy <- as.numeric(format(as.Date(tt),format="%j"))/365
+  dts.clm$anual <- cut(dts.clm$doy,breaks=seq(0,1.01,length=24))
+
+  save(file="~/CEBA/Rdata/JBMts.rda",dts.clm)
+}
+
+@ 
+
+
+aunque muestra varios vacíos, especialmente entre los años … y .... 
+Utilizamos las mediciones diarias de temperatura media, mínima y máxima (°C), humedad relativa media (%) y precipitación total de lluvia (mm).
+ 
+Utilizamos datos de climatologías interpoladas para generar una predicción de la temperatura y precipitación esperada en la zona según los datos climáticos de una red de estaciones meteorológicas entre 1960 y 1990 y compararlas con los datos medidos en la estaciones climáticas del área de estudio.
+
+\subsection{Datos de sensores remotos}
+Utilizamos productos generados a partir de los sensores Modis Terra y Aqua y disponibles en... para caracterizar la temperatura de la superficie de la tierra, índice de vegetación, índice de área foliar y área fotosintéticamente activa, emisividad y albedo, evapotranspiración, etc. Con estos datos generamos series de tiempo para el periodo de 2001 a 2012.
+
+<<DatosModis>>=
+if (!exists("dts.sen")) {
+
+  dts.sen <- data.frame()
+  for (vv in c("250m_16_days_NDVI","250m_16_days_EVI","LST_Day_1km","LST_Night_1km","PET_1km","ET_1km","Lai_1km","Fpar_1km")) {
+    for (k in dir(sprintf("%s/%s/%s",mptc,mapaDB,vv))) {
+      fch <- sub("A","",strsplit(k,"\\.")[[1]][2])
+      yr <- as.numeric(substr( fch,1,4))
+      dd <- as.numeric(substr( fch,5,8))
+      fch <- yr + (dd/365)
+      rq <- raster(sprintf("%s/%s/%s/%s",mptc,mapaDB,vv,k))
+      qry <- unlist(extract(rq,JBM))
+      dts.sen <- rbind(dts.sen,data.frame(fch=fch,
+                                          year=yr,
+                                          doy=dd/365,
+                                          j=1:length(qry),var=vv,
+                                          val=qry))
+    }
+  }
+ 
+  dts.sen$anual <- cut(dts.sen$doy,breaks=seq(0,1.01,length=24))
+  save(file="~/CEBA/Rdata/JBMts.rda",dts.sen,dts.clm)
+}
+
+ss <- dts.sen$var %in% c("LST_Day_1km","LST_Night_1km")
+dts.sen$val[ss & dts.sen$val < 7500] <- NA
+dts.sen$val[ss] <- (dts.sen$val[ss] * 0.02)-273.15
+ss <- dts.sen$var %in% c("ET_1km","PET_1km")
+dts.sen$val[ss & dts.sen$val > 32760] <- NA
+dts.sen$val[ss] <- dts.sen$val[ss] * 0.1
+ss <- dts.sen$var %in% c("Fpar_1km","Lai_1km")
+dts.sen$val[ss & dts.sen$val > 100] <- NA
+dts.sen$val[ss & dts.sen$val < 0] <- NA
+dts.sen$val[ss] <- dts.sen$val[ss] * 0.1
+ss <- dts.sen$var %in% c("250m_16_days_EVI","250m_16_days_NDVI")
+dts.sen$val[ss & dts.sen$val > 10000] <- NA
+dts.sen$val[ss & dts.sen$val < -2000] <- NA
+dts.sen$val[ss] <- dts.sen$val[ss] * 0.0001
+
+@ 
+
+Enfocamos la comparación en diez pixeles que corresponden con el parche de bosque seco, y diez pixeles representativos de las áreas aledañas con distinto tipo de uso de la tierra.
+
+Calculamos la cobertura boscosa del fragmento a partir de mapas de un mosaico de imágenes LandSat … Hansen et al 2013
+
+\section{Resultados y Discusión}
+
+\subsection{Estimados de cobertura boscosa}
+
+<<>>=
+table(values(rADM2) %in% c(275,311),values(frags %in% slc[1:2]))*xarea
+table(values(rADM2) %in% c(275,311),values(frags>0))*xarea
+
+table(values(rADM2),values(frags))*xarea
+round(table(values(rADM2),values(frags))*xarea,3)
+plot(bosque)
+plot(municipio,add=T)
+
+table(values(frags),values(perdida))
+table(values(sfrags %in% 446))*xarea
+
+
+@ 
+
+\subsection{Temperatura E.M.}
+
+<<temperatura,fig=true>>=
+tt <- with(subset(dts.clm,year>1972),aggregate(data.frame(tmean=tmean,tmin=tmin,tmax=tmax),list(yr=year,anual=anual),function(x) {mean(x,na.rm=T)}))
+tx <- with(dts.clm,aggregate(data.frame(tmax=tmax),list(yr=year,anual=anual),function(x) {max(x,na.rm=T)}))
+tn <- with(dts.clm,aggregate(data.frame(tmin=tmin),list(yr=year,anual=anual),function(x) {min(x,na.rm=T)}))
+
+par(xpd=T)
+boxplot(tmax~anual,tx,ylim=c(10,45),axes=F,ylab="Temperatura [°C]")
+boxplot(tmin~anual,tn,axes=F,add=T)
+##boxplot(tmax~anual,tx,ylim=c(20,35),axes=F,add=T)
+axis(2)
+xxs <- 0.5+(23*c(0,31,59,90,120,151,181,212,243,273,304,334,365)/365)
+for (j in 1:12)
+  polygon(c(xxs[j],xxs[j],xxs[j+1],xxs[j+1],xxs[j]),
+          c(-1.65,-.5,-.5,-1.65,-1.65)+10)
+text(xxs[1:12]+(23*16/365),9,c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dec"))
+
+@ 
+
+\subsection{Precipitacion E.M.}
+
+<<PrecipitacionTotalAnual,fig=true>>=
+pp <- with(subset(dts.clm,year>1972),aggregate(data.frame(PP=PP),list(yr=year,anual=anual),function(x) {sum(x,na.rm=T)*365/23*1/length(x)}))
+
+
+par(xpd=T)
+boxplot(PP~anual,pp,ylim=c(0,200),axes=F,ylab="Precipitación [mm]")
+axis(2)
+xxs <- 0.5+(23*c(0,31,59,90,120,151,181,212,243,273,304,334,365)/365)
+for (j in 1:12)
+  polygon(c(xxs[j],xxs[j],xxs[j+1],xxs[j+1],xxs[j]),
+          c(-2.15,-.5,-.5,-2.15,-2.15)*5)
+text(xxs[1:12]+(23*16/365),-7,c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dec"))
+box(,bty="n")
+
+@ 
+
+
+<<>>=
+pttl <- with(subset(dts.clm,year>1972),aggregate(data.frame(PP=PP),list(yr=year),function(x) {sum(x,na.rm=T)*365/length(x)}))
+pver <- with(subset(dts.clm,year>1972 & anual %in% levels(anual)[7:13]),
+             aggregate(data.frame(PP=PP),list(yr=year),function(x) {sum(x,na.rm=T)*365/23*7/length(x)}))
+phum <- with(subset(dts.clm,year>1972 & anual %in% levels(anual)[14:21]),
+             aggregate(data.frame(PP=PP),list(yr=year),function(x) {sum(x,na.rm=T)*365/23*8/length(x)}))
+
+pttl <- merge(pttl,merge(phum,pver,by="yr"),by="yr")
+summary(pttl$PP.x)
+summary(pttl$PP.x/pttl$PP)
+summary(pttl$PP.y/pttl$PP)
+summary((pttl$PP.x+pttl$PP.y)/pttl$PP)
+
+@ 
+
+
+<<>>=
+##dias con precipitacion mayor a 1mm
+aggregate(dts.clm$PP>1,list(dts.clm$year),sum,na.rm=T)
+
+@ 
+\subsection{Temperatura Modis}
+
+<<>>=
+tx <- with(subset(dts.sen,var %in% "LST_Day_1km"),aggregate(data.frame(tmax=val),list(yr=year,anual=anual),function(x) {max(x,na.rm=T)}))
+tn <- with(subset(dts.sen,var %in% "LST_Night_1km"),aggregate(data.frame(tmin=val),list(yr=year,anual=anual),function(x) {min(x,na.rm=T)}))
+
+tx <- subset(tx,is.finite(tx$tmax))
+tn <- subset(tn,is.finite(tn$tmin))
+par(xpd=T)
+boxplot(tmax~anual,tx,ylim=c(10,45),axes=F,ylab="Temperatura [°C]",
+        col="grey77",border="grey35")
+boxplot(tmin~anual,tn,axes=F,add=T,
+        col="grey12",border="grey35")
+##boxplot(tmax~anual,tx,ylim=c(20,35),axes=F,add=T)
+axis(2)
+xxs <- 0.5+(23*c(0,31,59,90,120,151,181,212,243,273,304,334,365)/365)
+for (j in 1:12)
+  polygon(c(xxs[j],xxs[j],xxs[j+1],xxs[j+1],xxs[j]),
+          c(-1.65,-.5,-.5,-1.65,-1.65)+10)
+text(xxs[1:12]+(23*16/365),9,c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dec"))
+
+@ 
+
+
+<<>>=
+summary(aggregate(tt$tmean,list(tt$yr),mean,na.rm=T)$x)
+summary(aggregate(tx$tmax,list(tx$yr),max,na.rm=T)$x)
+summary(aggregate(tn$tmin,list(tn$yr),min,na.rm=T)$x)
+
+@ 
+\subsection{Evapotranspiracion Modis}
+
+<<ET,fig=true>>=
+ee <- with(subset(dts.sen,var %in% "ET_1km"),aggregate(data.frame(ET=val),list(yr=year,anual=anual),function(x) {max(x,na.rm=T)}))
+ep <- with(subset(dts.sen,var %in% "PET_1km"),aggregate(data.frame(PET=val),list(yr=year,anual=anual),function(x) {max(x,na.rm=T)}))
+
+
+par(xpd=T)
+boxplot(ET~anual,ee,ylim=c(0,100),axes=F,ylab="Evapotranspiración []",
+        col="grey77",border="grey35")
+##boxplot(PET~anual,ep,axes=F,add=T,
+##        col="grey12",border="grey35")
+##boxplot(tmax~anual,tx,ylim=c(20,35),axes=F,add=T)
+axis(2)
+xxs <- 0.5+(23*c(0,31,59,90,120,151,181,212,243,273,304,334,365)/365)
+for (j in 1:12)
+  polygon(c(xxs[j],xxs[j],xxs[j+1],xxs[j+1],xxs[j]),
+          c(-3.65,-.5,-.5,-3.65,-3.65)+0)
+text(xxs[1:12]+(23*16/365),-2,c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dec"))
+
+@ 
+
+\subsection{NDVI Modis}
+
+<<NDVI,fig=true>>=
+nn <- with(subset(dts.sen,var %in% "250m_16_days_EVI"),aggregate(data.frame(NDVI=val),list(yr=year,anual=anual),function(x) {mean(x,na.rm=T)}))
+
+
+par(xpd=T)
+boxplot(NDVI~anual,nn,ylim=c(0,1),axes=F,ylab="NDVI",
+        col="grey77",border="grey35")
+##boxplot(PET~anual,ep,axes=F,add=T,
+##        col="grey12",border="grey35")
+##boxplot(tmax~anual,tx,ylim=c(20,35),axes=F,add=T)
+axis(2)
+xxs <- 0.5+(23*c(0,31,59,90,120,151,181,212,243,273,304,334,365)/365)
+for (j in 1:12)
+  polygon(c(xxs[j],xxs[j],xxs[j+1],xxs[j+1],xxs[j]),
+          c(-.1,-.05,-.05,-.1,-.1)+0)
+text(xxs[1:12]+(23*16/365),-.075,c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dec"))
+
+@ 
+
+\section{Correlaciones}
+
+<<>>=
+ with(merge(ep,pp,by=c("yr","anual")),cor.test(PP,PET))
+with(merge(ee,pp,by=c("yr","anual")),cor.test(PP,ET))
+
+@ 
+Clima 
+muestran un perfil de clima …
+
+
+La temperatura media anual se ubica alrededor de 28,76°C, con muy poca variación interanual. El valor promedio de la temperatura máxima anual es de 41,12°C, pero el máximo absoluto registrado es de 45,83°C. La valor promedio de la temperatura mínima anual es de 17,63°C, y el valor mínimo absoluto registrado es de 7,51 °C (¿error de medición?).
+
+Las mediciones de temperatura de la estación climática muestran un aumento estacional muy regular en los meses de … a... para la temperatura media, máxima y mínima, pero los estimados de temperatura en la superficie de la tierra basadas en sensores remotos muestran gran variabilidad intranual en la temperatura diurna y más regularidad en la nocturna. De hecho, a pesar de que el valor de LST nocturno se corresponden muy bien con las mediciones de temperatura mínima, el valor de LST diurno muestra picos en los meses de marzo seguido por valores bajos entre … y ….
+
+La precipitación media anual es de 375.5 (153-445) mm, con valores extremos de 27.95 mm registrado en el año 2010 y 1275 mm, en el año 1981. Apróximadamente el 58,3% de la precipitación anual cae entre agosto y noviembre, y el 32,7% cae entre abril y julio, sin embargo estos porcentajes pueden variar, y en algunos años (notablemente 1983, 1998 y 2009) el periodo de abril a julio aporta mayor precipitación que el resto del año. 
+
+La evapo-transpiración sigue un patrón similar a las precipitaciones, con valores mínimos de … y máximos entre … y …
+Sin embargo la evapotranspiración potencial es mucho mayor a principios de año, llegando a estar muy por encima de la evapotranspiración estimada, en el segundo semestre del año ET y ETP tienen valores similares.
+
+El índice de vegetación tiene valores mínimos en marzo (0.2) y valores máximos entre octubre y noviembre (0.6), Entre mayo y enero el valor de NDVI suele mantenerse por encima de 0.4, aunque se observa una leve reducción a mediados de julio, que coincide con un breve periodo de reducción de la precipitación. 
+
+
+
+ pero lo os extremos de temperatura  igualmente poco variables, un poco más variables, la máxima 
+
+es  más en algunos años y temperatura promedio mensual de … con máximas y mínimas de … 
+
+
+El climadiagrama normalizado para el periodo 1960-1990 muestra una temperatura media anual de 27.7°C y una precipitación total anual de 580 mm (215-1250mm), con 4.2 días con precipitación mayor o igual a 1.0 mm, evaporación total de 1826 mm, humedad relativa de 76% (50-92%). El valor total de precipitación obtenido a partir de la página web no corresponde exactamente con los totales disponibles en documentos de ...
+
+Fenología de la vegetación
+
+Irregularidades
+
+Tendencias
+
+Según los datos climáticos de estaciones cercanas se estima que la precipitación promedio en la zona esté entre … y … mm anuales con temperaturas promedio de … 
+con meses secos entre … y … 
+
+Los datos medidos por sensores remotos estiman una temperatura promedio diurna de … y nocturna de …, el valor diurno generalmente está por encima de los valores de temperatura máxima medidos en la estación climática, pero los valores diurnos corresponden muy bien con los valores de temperaturas mínimas. 
+
+La evapo-transpiración potencial medida por sensores remotos oscila entre … y … con máximos anuales en la época de … La evapo-transpiración actual está entre … nual de … 
+
+La vegetación en el área de estudio muestra un pefil intermedio entre un régimen unimodal y uno bimodal. El regimen de precipitación es variable entre años, y la vegetación es capaz de mantenerse activa durante varios meses con variaciones de precipitación, pero las condiciones no son suficientes para mantener una cobertura boscosa más densa.  
+la baja precipitación anual La vegetación usualmente tiene una respuesta moderada a los cambios en las precipitaciones y 
+A pesar de las variaciones intra-anuales en la precipitación,  sin embargo las variaciones en la precipitación entre los meses de mayo a noviembre no son 
+
+
+Se observa claramente que la vegetación sigue un perfil uni/bi-modal con picos máximos en … y mínimos en … 
+La tendencia en el índice de vegetación es creciente
+
+Comparado con áreas aledañas el índice de vegetación/emisividad/LPAR/LAI es mayor/menor
+
+
+
+Para el año 2000 el área de estudio contaba con dos fragmentos que sumaban 2,22 km2 o ?? hectáreas de cobertura boscosa (porcentaje de cobertura arborea mayor a 40%), los cuales representan los dos fragmentos de cobertura boscosa de mayor tamaño, y aproximadamente el 33,6% de la cobertura boscosa total, de los municipios Maracaibo y San Francisco. 
+
+En el periodo 2000 a 2012 se produjo un aumento notable de la cobertura boscosa en el área del JBM que representaría un aumento de hasta 13,8% en el área total de los fragmentos, y pérdidas marginales de menos del 1%.
+
+\printbibliography
+
+
+\end{document}
